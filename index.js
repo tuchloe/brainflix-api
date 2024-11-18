@@ -1,8 +1,10 @@
 const express = require('express');
+const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
+const multer = require('multer');
 
 const app = express();
 const PORT = 5000;
@@ -12,7 +14,20 @@ const API_URL = 'https://unit-3-project-api-0a5620414506.herokuapp.com';
 const API_KEY = 'b9839b31-b3b8-4a10-a6c4-541c7c4b9c28';
 
 app.use(express.json());
+app.use(cors()); 
 app.use('/images', express.static(path.join(__dirname, 'public', 'images')));
+app.use('/videos', express.static(path.join(__dirname, 'public', 'videos')));
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'public/videos/');
+  },
+  filename: (req, file, cb) => { 
+    cb(null, uuidv4() + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({ storage });
 
 const readVideos = () => {
   try {
@@ -78,7 +93,7 @@ const populateVideos = async () => {
   }
 };
 
-app.post('/videos', (req, res) => {
+app.post('/videos', upload.single('video'), (req, res) => {
   const { title, channel, description } = req.body;
 
   const newVideo = {
@@ -90,7 +105,7 @@ app.post('/videos', (req, res) => {
     views: '0',
     likes: '0',
     duration: '0:00',
-    video: 'https://www.example.com/video.mp4',
+    video: `/videos/${req.file.filename}`,
     timestamp: Date.now(),
     comments: [],
   };
@@ -116,6 +131,35 @@ app.get('/videos/:id', (req, res) => {
   } else {
     res.status(404).json({ message: 'Video not found' });
   }
+});
+
+app.post('/videos/:videoId/comments', (req, res) => {
+  const { videoId } = req.params;
+  const { comment } = req.body;
+
+  if (!comment || typeof comment !== 'string' || !comment.trim()) {
+    return res.status(400).json({ message: 'Invalid comment' });
+  }
+
+  const videos = readVideos();
+  const video = videos.find((v) => v.id === videoId);
+
+  if (!video) {
+    return res.status(404).json({ message: 'Video not found' });
+  }
+
+  const newComment = {
+    id: uuidv4(),
+    name: 'Anonymous',
+    comment: comment.trim(),
+    likes: 0,
+    timestamp: Date.now(),
+  };
+
+  video.comments.push(newComment);
+  writeVideos(videos);
+
+  res.status(201).json(newComment);
 });
 
 populateVideos();
