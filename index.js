@@ -14,7 +14,7 @@ const API_URL = 'https://unit-3-project-api-0a5620414506.herokuapp.com';
 const API_KEY = 'b9839b31-b3b8-4a10-a6c4-541c7c4b9c28';
 
 app.use(express.json());
-app.use(cors()); 
+app.use(cors());
 app.use('/images', express.static(path.join(__dirname, 'public', 'images')));
 app.use('/videos', express.static(path.join(__dirname, 'public', 'videos')));
 
@@ -22,7 +22,7 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'public/videos/');
   },
-  filename: (req, file, cb) => { 
+  filename: (req, file, cb) => {
     cb(null, uuidv4() + path.extname(file.originalname));
   },
 });
@@ -61,7 +61,7 @@ const populateVideos = async () => {
   try {
     const videoListResponse = await axios.get(`${API_URL}/videos?api_key=${API_KEY}`);
     const videoList = videoListResponse.data;
-    
+
     const formattedVideos = [];
     for (let video of videoList) {
       const videoDetails = await fetchVideoDetailsFromAPI(video.id);
@@ -93,19 +93,21 @@ const populateVideos = async () => {
   }
 };
 
-app.post('/videos', upload.single('video'), (req, res) => {
+app.post('/videos', upload.fields([{ name: 'video' }, { name: 'poster' }]), (req, res) => {
   const { title, channel, description } = req.body;
 
   const newVideo = {
     id: uuidv4(),
     title,
     channel,
-    image: '/images/example.jpg',
+    image: req.files.poster
+      ? `/images/${req.files.poster[0].filename}`
+      : '/images/placeholder.jpg',
     description,
     views: '0',
     likes: '0',
     duration: '0:00',
-    video: `/videos/${req.file.filename}`,
+    video: `/videos/${req.files.video[0].filename}`,
     timestamp: Date.now(),
     comments: [],
   };
@@ -160,6 +162,28 @@ app.post('/videos/:videoId/comments', (req, res) => {
   writeVideos(videos);
 
   res.status(201).json(newComment);
+});
+
+app.delete('/videos/:videoId/comments/:commentId', (req, res) => {
+  const { videoId, commentId } = req.params;
+
+  const videos = readVideos();
+  const video = videos.find((v) => v.id === videoId);
+
+  if (!video) {
+    return res.status(404).json({ message: 'Video not found' });
+  }
+
+  const commentIndex = video.comments.findIndex((comment) => comment.id === commentId);
+
+  if (commentIndex === -1) {
+    return res.status(404).json({ message: 'Comment not found' });
+  }
+
+  video.comments.splice(commentIndex, 1);
+  writeVideos(videos);
+
+  res.status(200).json({ message: 'Comment deleted successfully' });
 });
 
 populateVideos();
